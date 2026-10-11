@@ -2,7 +2,7 @@
 #include <cstddef>
 
 constexpr size_t HEAP_SIZE = 1024 * 1024; // 1 MB fake heap
-static char heap[HEAP_SIZE];
+alignas(16) static char heap[HEAP_SIZE];
 
 struct BlockHeader{
     size_t size;
@@ -19,10 +19,23 @@ void init_heap(){
 }
 
 void* my_alloc(size_t size){
+    size  = (size + 7) & ~static_cast<size_t>(7);
+
     BlockHeader* current = heap_start;
 
     while(current != nullptr){
         if(current->free && current->size >= size){
+            // enough left over to carve out a new free block?
+            if(current->size >= size + sizeof(BlockHeader) + 8){
+                BlockHeader* new_block = reinterpret_cast<BlockHeader*>(
+                reinterpret_cast<char*>(current + 1) + size);
+                new_block->size = current->size - size - sizeof(BlockHeader);
+                new_block->free = true;
+                new_block->next = current->next;
+
+                current->size = size;
+                current->next = new_block;
+            }
             current->free = false;
             return reinterpret_cast<void*>(current + 1);
         }
@@ -53,4 +66,5 @@ int main(){
 
     int* c = static_cast<int*>(my_alloc(sizeof(int)));
     std::cout << "second alloc: " << (c == nullptr ? "failed" : "worked") << "\n";
+    std::cout << "b and c are different: " << (b != c ? "yes" : "no") << "\n";
 }
