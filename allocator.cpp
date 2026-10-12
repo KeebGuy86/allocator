@@ -44,12 +44,26 @@ void* my_alloc(size_t size){
     return nullptr; // no block big enough found
 }
 
+void coalesce(){
+    BlockHeader* current = heap_start;
+    while(current != nullptr && current->next != nullptr){
+        if(current->free && current->next->free){          //checks to see if both the current block and the next block are free
+            current->size += sizeof(BlockHeader) + current->next->size;    //if they are it will combine them into one big block
+            current->next = current->next->next;
+        }
+        else{
+            current = current->next;
+        }
+    }
+}
+
 void my_free(void* ptr){
     if(ptr == nullptr){
         return;
     }
     BlockHeader* header = reinterpret_cast<BlockHeader*>(ptr) - 1;
     header->free = true;
+    coalesce();
 }
 
 int main(){
@@ -67,4 +81,19 @@ int main(){
     int* c = static_cast<int*>(my_alloc(sizeof(int)));
     std::cout << "second alloc: " << (c == nullptr ? "failed" : "worked") << "\n";
     std::cout << "b and c are different: " << (b != c ? "yes" : "no") << "\n";
+
+    my_free(b);
+    my_free(c);
+ 
+    //coalescing test: allocate 3 blocks, free them all
+    //then ask for a whole heap in one go 
+    void* p1 = my_alloc(100);
+    void* p2 = my_alloc(100);
+    void* p3 = my_alloc(100);
+
+    my_free(p1);
+    my_free(p2);
+    my_free(p3);
+    void* big = my_alloc(HEAP_SIZE - sizeof(BlockHeader));
+    std::cout << "big alloc after freeing all: " << (big != nullptr ? "worked" : "failed") << "\n";
 }
