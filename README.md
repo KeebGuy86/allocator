@@ -3,7 +3,7 @@
 Welcome to my memory allocator project! I am building this from scratch to dive deep into **systems design**, manual memory management, pointer arithmetic, and memory alignment. 
 
 ### ⚠️ Project Status: Learning & WIP (Work in Progress)
-* **My Experience Level:** I am a rookie to the world of systems design. 
+* **My Experience Level:** Higher Intermeidate in C++ itself, but a rookie in the world of Systems Design.
 * **Is this production-ready?** Absolutely not, It is an educational sandbox full of experimental code, bugs, and learning moments.
 * **Why is it public?** To track my progress, practice version control, and open the door for constructive, kind feedback.
 
