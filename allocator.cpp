@@ -1,16 +1,24 @@
 #include <iostream>
 #include <cstddef>
+#include <cstdint>
 
 constexpr size_t HEAP_SIZE = 1024 * 1024; // 1 MB fake heap
-alignas(16) static char heap[HEAP_SIZE];
+constexpr size_t ALIGNMENT = 16;
+alignas(ALIGNMENT) static char heap[HEAP_SIZE];
 
-struct BlockHeader{
+struct alignas(ALIGNMENT) BlockHeader{
     size_t size;
     bool free;
     BlockHeader* next;
 };
 
+static_assert(sizeof(BlockHeader) % ALIGNMENT == 0, "header must keep payloads aligned");
+
 BlockHeader* heap_start = reinterpret_cast<BlockHeader*>(heap);
+
+constexpr size_t align_up(size_t n){
+    return (n + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+}
 
 void init_heap(){
     heap_start->size = HEAP_SIZE - sizeof(BlockHeader);
@@ -19,14 +27,17 @@ void init_heap(){
 }
 
 void* my_alloc(size_t size){
-    size  = (size + 7) & ~static_cast<size_t>(7);
+    if (size == 0 || size > HEAP_SIZE){
+        return nullptr;
+    }
+    size = align_up(size);
 
     BlockHeader* current = heap_start;
 
     while(current != nullptr){
         if(current->free && current->size >= size){
             // enough left over to carve out a new free block?
-            if(current->size >= size + sizeof(BlockHeader) + 8){
+            if(current->size >= size + sizeof(BlockHeader) + ALIGNMENT){
                 BlockHeader* new_block = reinterpret_cast<BlockHeader*>(
                 reinterpret_cast<char*>(current + 1) + size);
                 new_block->size = current->size - size - sizeof(BlockHeader);
@@ -84,6 +95,11 @@ int main(){
 
     my_free(b);
     my_free(c);
+
+    void* t = my_alloc(1);
+    std::cout << "16-aligned: " << (reinterpret_cast<uintptr_t>(t) % 16 == 0 ? "yes" : "no") << "\n";
+    std::cout << "zero alloc: " << (my_alloc(0) == nullptr ? "rejected" : "allowed") << "\n";
+    my_free(t);
  
     //coalescing test: allocate 3 blocks, free them all
     //then ask for a whole heap in one go 
