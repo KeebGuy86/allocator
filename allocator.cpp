@@ -1,4 +1,4 @@
-#include <iostream>
+#include<iostream>
 #include <cstddef>
 #include <cstdint>
 
@@ -6,6 +6,14 @@ constexpr size_t HEAP_SIZE = 1024 * 1024;   // 1 MB fake heap
 constexpr size_t ALIGNMENT = 16;
 constexpr size_t MAGIC_FREE = 0xF4EEB10C;   //stamped on a block when it is free
 constexpr size_t MAGIC_USED = 0xA110C8ED;   //stamped on a block when it is in use
+
+void (*log_fn)(const char*) = nullptr;
+
+void log(const char* msg){
+    if(log_fn != nullptr){
+        log_fn(msg);
+    }
+}
 
 alignas(ALIGNMENT) static char heap[HEAP_SIZE];
 
@@ -98,20 +106,20 @@ void my_free(void* ptr){
     //checks for valid pointer
     char* p = reinterpret_cast<char*>(ptr);
     if (p < heap + sizeof(BlockHeader) || p >= heap + HEAP_SIZE){
-        std::cout << "my_free: invalid pointer\n";
+        log("my_free: invalid pointer\n");
         return;
     }
     BlockHeader* header = reinterpret_cast<BlockHeader*>(ptr) -1;
 
     //check #2: is the header already freed?
     if (MAGIC_FREE == header->magic){
-        std::cout << "my_free: double free detected\n";
+        log("my_free: double free detected\n");
         return;
     }
 
     //check #3: not stamped?
     if (header->magic != MAGIC_USED){
-        std::cout << "my_free: invalid pointer\n";
+        log("my_free: invalid pointer\n");
         return;
     }
 
@@ -121,7 +129,13 @@ void my_free(void* ptr){
     coalesce(header);   //coalesce(BlockHeader* block)
 }
 
+// The test program's way of printing: just forwards the message to cout.
+void test_log(const char* msg){
+    std::cout << msg;
+}
+
 int main(){
+    log_fn = test_log;
     init_heap();
 
     int* a = static_cast<int*>(my_alloc(sizeof(int)));
