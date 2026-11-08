@@ -14,6 +14,7 @@ struct alignas(ALIGNMENT) BlockHeader{
     size_t magic;
     bool free;
     BlockHeader* next;
+    BlockHeader* prev;
 };
 
 static_assert(sizeof(BlockHeader) % ALIGNMENT == 0, "header must keep payloads aligned");
@@ -28,7 +29,8 @@ void init_heap(){
     heap_start->size = HEAP_SIZE - sizeof(BlockHeader);     //starts off as 1 big free block
     heap_start->free = true;
     heap_start->magic = MAGIC_FREE;     // applies the 'free' stamp
-    heap_start->next = nullptr;
+    heap_start->next = nullptr;     //block next of current
+    heap_start->prev = nullptr;     // block before current
 }
 
 void* my_alloc(size_t size){
@@ -49,6 +51,11 @@ void* my_alloc(size_t size){
                 new_block->free = true;
                 new_block->magic = MAGIC_FREE;  //every new block that comes out of an already existing block gets the 'free' stamp
                 new_block->next = current->next;
+                //make the current block the previous block;
+                new_block->prev = current;
+                if (new_block->next != nullptr){        //if next and current are free, combine them into 1 block
+                    new_block->next->prev = new_block;
+                }
 
                 current->size = size;
                 current->next = new_block;
@@ -62,15 +69,24 @@ void* my_alloc(size_t size){
     return nullptr; // no block big enough found
 }
 
-void coalesce(){
-    BlockHeader* current = heap_start;
-    while(current != nullptr && current->next != nullptr){
-        if(current->free && current->next->free){          //checks to see if both the current block and the next block are free
-            current->size += sizeof(BlockHeader) + current->next->size;    //if they are it will combine them into one big block
-            current->next = current->next->next;
+void coalesce(BlockHeader* block){      //merges 'block' nearest neighbors if they are frees
+    if (block->next != nullptr && block->next->free){     //if block->next exists and it is free
+        block->size += sizeof(BlockHeader) + block->next->size;     // block gains the next block's payload AND its header (the header becomes normal space)
+        //unlink block->next as it has become 1 block
+        block->next = block->next->next;
+
+        if (block->next != nullptr){
+            block->next->prev = block;
         }
-        else{
-            current = current->next;
+    }
+    //merge with previous block
+    if (block->prev != nullptr && block->prev->free){
+        block->prev->size += sizeof(BlockHeader) + block->size;      // previous block gains block's payload AND its header (the header becomes normal space)
+        block->prev->next = block->next;    // skips over block so it is no longer in the list
+
+        // the block after the swallowed one must now point back at the previous block
+        if (block->next != nullptr){
+            block->next->prev = block->prev;
         }
     }
 }
@@ -102,7 +118,7 @@ void my_free(void* ptr){
     //if all checks are passed: this is a real, in-use block, free it
     header->free = true;
     header->magic = MAGIC_FREE;
-    coalesce();
+    coalesce(header);   //coalesce(BlockHeader* block)
 }
 
 int main(){
