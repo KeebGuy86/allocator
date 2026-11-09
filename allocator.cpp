@@ -15,8 +15,6 @@ void log(const char* msg){
     }
 }
 
-alignas(ALIGNMENT) static char heap[HEAP_SIZE];
-
 struct alignas(ALIGNMENT) BlockHeader{
     size_t size;
     size_t magic;
@@ -27,22 +25,57 @@ struct alignas(ALIGNMENT) BlockHeader{
 
 static_assert(sizeof(BlockHeader) % ALIGNMENT == 0, "header must keep payloads aligned");
 
-BlockHeader* heap_start = reinterpret_cast<BlockHeader*>(heap);
+char* heap_base = nullptr;      //where the region begins
+size_t heap_size = 0;         //size in raw bytes
+BlockHeader* heap_start = nullptr;  //creation of first block
 
 constexpr size_t align_up(size_t n){
     return (n + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
 }
 
-void init_heap(){
-    heap_start->size = HEAP_SIZE - sizeof(BlockHeader);     //starts off as 1 big free block
+constexpr size_t align_down(size_t n){
+    return n & ~(ALIGNMENT - 1);
+}
+
+//allows the computer to manage its own memory
+bool init_heap(void* start, size_t size){       //start = the region where it starts, size = size in bytes
+   if (start == nullptr){
+       return false;    //renders the region unusable(nothing changes)
+   }
+
+    //the region doesnt garuntee a 16-byte boundry, but a block must have one
+    //so we skip to the first aligned address
+    uintptr_t raw = reinterpret_cast<uintptr_t>(start);
+    uintptr_t aligned = align_up(raw);
+    size_t skipped = aligned - raw;     //bytes thrown away to reach the boundry
+
+    if (size <= skipped){
+        return false;       //nothing remaining afer skipping
+    }
+    size -= skipped;
+    size = align_down(size);       //the end must land on a boundry
+
+    // The region must fit a header plus at least one aligned chunk of payload
+    if (size < sizeof(BlockHeader) + ALIGNMENT){
+        return false;
+    }
+
+    heap_base = reinterpret_cast<char*>(aligned);
+    heap_size = size;
+    heap_start = reinterpret_cast<BlockHeader*>(heap_base);
+
+    //region starts out as 1 big free block
+    heap_start->size = heap_size - sizeof(BlockHeader);
     heap_start->free = true;
-    heap_start->magic = MAGIC_FREE;     // applies the 'free' stamp
-    heap_start->next = nullptr;     //block next of current
-    heap_start->prev = nullptr;     // block before current
+    heap_start->magic = MAGIC_FREE;
+    heap_start->next = nullptr;
+    heap_start->prev = nullptr;
+
+    return true;
 }
 
 void* my_alloc(size_t size){
-    if (size == 0 || size > HEAP_SIZE){
+    if (size == 0 || size > heap_size){
         return nullptr;
     }
     size = align_up(size);
@@ -105,7 +138,7 @@ void my_free(void* ptr){
     }
     //checks for valid pointer
     char* p = reinterpret_cast<char*>(ptr);
-    if (p < heap + sizeof(BlockHeader) || p >= heap + HEAP_SIZE){
+    if (p < heap_base + sizeof(BlockHeader) || p >= heap_base + heap_size){
         log("my_free: invalid pointer\n");
         return;
     }
@@ -129,14 +162,21 @@ void my_free(void* ptr){
     coalesce(header);   //coalesce(BlockHeader* block)
 }
 
-// The test program's way of printing: just forwards the message to cout.
+// The test program's way of printing: just forwards the message to output.
 void test_log(const char* msg){
     std::cout << msg;
 }
 
 int main(){
     log_fn = test_log;
-    init_heap();
+
+    alignas(ALIGNMENT) static char test_heap[HEAP_SIZE];
+
+    //hand over the region to the allocator, instead of manually handling it
+    if (!init_heap(test_heap, sizeof(test_heap))){
+        std::cout << "init_heap failed\n";
+        return 1; //stop the prgoram, no heap is available to test
+    }
 
     int* a = static_cast<int*>(my_alloc(sizeof(int)));
     *a = 42;
@@ -174,6 +214,6 @@ int main(){
     my_free(p1);
     my_free(p2);
     my_free(p3);
-    void* big = my_alloc(HEAP_SIZE - sizeof(BlockHeader));
+    void* big = my_alloc(heap_size - sizeof(BlockHeader));
     std::cout << "big alloc after freeing all: " << (big != nullptr ? "worked" : "failed") << "\n";
 }
